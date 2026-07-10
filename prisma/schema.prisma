@@ -1,0 +1,105 @@
+// Prisma schema for BetBuddy
+// Local dev uses SQLite (file db). For Vercel production, change provider to
+// "postgresql" and point DATABASE_URL at Vercel Postgres / Neon. See README.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  name      String?
+  avatarUrl String?
+  points    Int      @default(1000) // virtual currency balance
+  createdAt DateTime @default(now())
+
+  memberships Membership[]
+  votes       Vote[]
+  bets        Bet[]
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  memberships Membership[]
+  polls       Poll[]
+}
+
+model Membership {
+  id       String  @id @default(cuid())
+  userId   String
+  groupId  String
+  role     String  @default("member") // "owner" | "member"
+
+  user  User  @relation(fields: [userId], references: [id])
+  group Group @relation(fields: [groupId], references: [id])
+
+  @@unique([userId, groupId])
+}
+
+model Poll {
+  id              String   @id @default(cuid())
+  groupId         String
+  question        String
+  closesAt        DateTime
+  status          String   @default("open") // "open" | "closed" | "settled"
+  winningOptionId String?
+  createdAt       DateTime @default(now())
+
+  group   Group        @relation(fields: [groupId], references: [id])
+  options PollOption[]
+  votes   Vote[]
+  bets    Bet[]
+}
+
+model PollOption {
+  id     String @id @default(cuid())
+  pollId String
+  label  String
+
+  poll  Poll   @relation(fields: [pollId], references: [id])
+  votes Vote[]
+  bets  Bet[]
+}
+
+// A Vote is a free "gut feeling" pick, one per user per poll.
+// IMPORTANT: the API layer only ever exposes aggregated counts/percentages
+// for votes, never the identity of who voted for what (see /api/polls/[pollId]/vote).
+model Vote {
+  id        String   @id @default(cuid())
+  pollId    String
+  optionId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  poll   Poll       @relation(fields: [pollId], references: [id])
+  option PollOption @relation(fields: [optionId], references: [id])
+  user   User       @relation(fields: [userId], references: [id])
+
+  @@unique([pollId, userId])
+}
+
+// A Bet is a real wager of virtual points on an option, at the odds locked
+// in at the moment the bet was placed.
+model Bet {
+  id         String   @id @default(cuid())
+  pollId     String
+  optionId   String
+  userId     String
+  amount     Int
+  oddsAtBet  Float
+  status     String   @default("pending") // "pending" | "won" | "lost" | "refunded"
+  createdAt  DateTime @default(now())
+
+  poll   Poll       @relation(fields: [pollId], references: [id])
+  option PollOption @relation(fields: [optionId], references: [id])
+  user   User       @relation(fields: [userId], references: [id])
+}
